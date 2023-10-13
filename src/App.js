@@ -38,7 +38,13 @@ function Square({ value, onSquareClick, isHighlight }) {
   );
 }
 
-function Board({ xIsNext, squares, onPlay }) {
+function Board({
+  xIsNext,
+  squares,
+  onPlay,
+  getNewestSquare,
+  setNewestCurrentMove,
+}) {
   const [isWinner, setIsWinner] = useState(false);
   const [arrayIndexHighLight, setArrayIndexHighLight] = useState(null);
   const [isDraw, setIsDraw] = useState(false);
@@ -48,11 +54,17 @@ function Board({ xIsNext, squares, onPlay }) {
       return;
     }
 
-    const nextSquares = deepCopy2DArray(squares);
+    if (calculateWinner(getNewestSquare()).isWin) {
+      setNewestCurrentMove();
+      return;
+    }
+
+    const newestSquare = getNewestSquare();
+    const nextSquares = deepCopy2DArray(newestSquare);
     if (xIsNext) {
-      nextSquares[indexRow][indexCol] = "X";
+      nextSquares[indexRow][indexCol] = X_CHAR;
     } else {
-      nextSquares[indexRow][indexCol] = "O";
+      nextSquares[indexRow][indexCol] = O_CHAR;
     }
     onPlay(nextSquares, [indexRow, indexCol]);
 
@@ -71,14 +83,26 @@ function Board({ xIsNext, squares, onPlay }) {
 
   let status;
   if (isWinner) {
-    status = "Winner: " + (xIsNext ? "O" : "X");
+    status = "Winner: " + (xIsNext ? O_CHAR : X_CHAR);
   } else {
-    status = "Next player: " + (xIsNext ? "X" : "O");
+    status = "Next player: " + (xIsNext ? X_CHAR : O_CHAR);
   }
 
   if (isDraw) {
     status = "Result: Draw";
   }
+
+  useEffect(() => {
+    if (isWinner) {
+      status = "Winner: " + (xIsNext ? O_CHAR : X_CHAR);
+    } else {
+      status = "Next player: " + (xIsNext ? X_CHAR : O_CHAR);
+    }
+
+    if (isDraw) {
+      status = "Result: Draw";
+    }
+  }, [squares]);
 
   return (
     <>
@@ -115,8 +139,16 @@ export default function Game() {
   const xIsNext = currentMove % 2 === 0;
   const [currentSquares, setCurrentSquares] = useState(history[currentMove]);
   const [isASC, setIsASC] = useState(true);
-  const [moves, setMoves] = useState();
+  const [moves, setMoves] = useState([]);
   const [moveHistory, setMoveHistory] = useState([]);
+
+  useEffect(() => {
+    const movesTemp = generateMoves();
+
+    setMoves(sortMoves(movesTemp, isASC));
+  }, [history]);
+
+  useEffect(() => {}, [setMoves, isASC]);
 
   function handlePlay(nextSquares, positionMove) {
     setHistory((pre) => [...pre, nextSquares]);
@@ -130,12 +162,26 @@ export default function Game() {
     setCurrentSquares(history[move]);
   }
 
-  useEffect(() => {
-    const movesTemp = history.map((squares, _indexMove) => {
+  function setNewestCurrentMove() {
+    setCurrentMove(history.length);
+    setCurrentSquares(getNewestSquare());
+  }
+
+  function getNewestSquare() {
+    return history[history.length - 1];
+  }
+
+  function generateMoves() {
+    return history.map((squares, _indexMove) => {
       let description;
-      description = isASC
-        ? `Go to move #${_indexMove}`
-        : `Go to move #${history.length - 1 - _indexMove}`;
+
+      if (_indexMove === currentMove) {
+        description = `You are at move #${currentMove}`;
+      } else {
+        description = isASC
+          ? `Go to move #${_indexMove}`
+          : `Go to move #${history.length - 1 - _indexMove}`;
+      }
 
       if (description.includes("#0")) {
         description = "Go to game start";
@@ -145,43 +191,63 @@ export default function Game() {
           : `${description}: (${moveHistory[history.length - _indexMove - 2]})`;
       }
 
-      return (
-        <li key={isASC ? _indexMove : history.length - _indexMove - 1}>
-          <button
-            onClick={() =>
-              jumpTo(isASC ? _indexMove : history.length - _indexMove - 1)
-            }
-          >
-            {description}
-          </button>
-        </li>
-      );
+      return {
+        description,
+        order: _indexMove,
+      };
     });
+  }
 
-    setMoves(movesTemp);
-  }, [isASC, history]);
-
-  function toggleButton() {
+  async function toggleButton() {
     setIsASC(!isASC);
+    const movesTemp = sortMoves(moves, !isASC);
+    setMoves(movesTemp);
+  }
+
+  function sortMoves(array, isAscendent) {
+    return array.sort((a, b) =>
+      isAscendent ? a.order - b.order : b.order - a.order
+    );
   }
 
   return (
     <div className="game">
       <div className="game-board">
-        <Board xIsNext={xIsNext} squares={currentSquares} onPlay={handlePlay} />
+        <Board
+          xIsNext={xIsNext}
+          squares={currentSquares}
+          onPlay={handlePlay}
+          getNewestSquare={getNewestSquare}
+          setNewestCurrentMove={setNewestCurrentMove}
+        />
       </div>
       <div className="game-info">
-        <div>
-          {currentMove === 0
-            ? "You are at game start"
-            : `You are at move #${currentMove}`}
-        </div>
         <div>
           <button style={{ cursor: "pointer" }} onClick={toggleButton}>
             {isASC ? "ASC" : "DESC"}
           </button>
         </div>
-        <ol>{moves}</ol>
+        <ol>
+          {moves.length !== 0 &&
+            moves.map((move) =>
+              move.description.includes("are at move") ? (
+                <li key={move.order}>
+                  <div
+                    style={{ cursor: "pointer" }}
+                    onClick={() => jumpTo(move.order)}
+                  >
+                    {move.description}
+                  </div>
+                </li>
+              ) : (
+                <li key={move.order}>
+                  <button onClick={() => jumpTo(move.order)}>
+                    {move.description}
+                  </button>
+                </li>
+              )
+            )}
+        </ol>
       </div>
     </div>
   );
